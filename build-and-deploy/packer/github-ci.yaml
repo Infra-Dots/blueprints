@@ -1,0 +1,72 @@
+name: Build Go Binary and Packer AMI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  go-packer-ami:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      AWS_REGION: eu-west-1
+      BINARY_NAME: infradots
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Go Binary
+        run: |
+          mkdir -p build
+          go build -o build/${BINARY_NAME} ./cmd
+
+      - name: Archive Binary (optional)
+        run: tar -czf build/${BINARY_NAME}.tar.gz -C build ${BINARY_NAME}
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_GITHUB_ROLE
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install HashiCorp Packer
+        uses: hashicorp/setup-packer@v3
+        with:
+          version: 1.14.1
+
+      - name: Validate Packer Template
+        run: |
+          packer init template.pkr.hcl
+          packer validate -var "go_binary=build/${BINARY_NAME}" template.pkr.hcl
+
+      - name: Build AMI with Packer
+        id: build
+        run: |
+          packer build -var "go_binary=build/${BINARY_NAME}" -machine-readable template.pkr.hcl | tee output.log
+
+      - name: Extract AMI ID from Output
+        id: ami
+        run: |
+          AMI_ID=$(grep 'artifact,0,id' output.log | cut -d, -f6 | cut -d: -f2)
+          echo "AMI_ID=$AMI_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Print AMI ID
+        run: echo "Built AMI ID: ${{ steps.ami.outputs.AMI_ID }}"
+
+      - name: Upload Packer Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: packer-log
+          path: packer.log
