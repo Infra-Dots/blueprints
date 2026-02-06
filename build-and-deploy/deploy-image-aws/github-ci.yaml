@@ -1,0 +1,63 @@
+name: Deploy AMI to AWS Auto Scaling Group
+
+on:
+  workflow_dispatch:
+    inputs:
+      ami_id:
+        description: 'AMI ID to deploy'
+        required: true
+        type: string
+      launch_template_name:
+        description: 'Launch Template name'
+        required: true
+        type: string
+      asg_name:
+        description: 'Auto Scaling Group name'
+        required: true
+        type: string
+      aws_region:
+        description: 'AWS Region'
+        required: true
+        type: string
+        default: 'eu-west-1'
+      node_drain_timeout:
+        description: 'Timeout for draining nodes (seconds)'
+        required: false
+        type: number
+        default: 300
+
+jobs:
+  deploy-ami:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Get Current Launch Template Version
+        id: current_lt
+        run: |
+          LT_INFO=$(aws ec2 describe-launch-templates \
+            --launch-template-names ${{ inputs.launch_template_name }} \
+            --region ${{ inputs.aws_region }} \
+            --query 'LaunchTemplates[0]')
+          
+          CURRENT_VERSION=$(echo $LT_INFO | jq -r '.LatestVersionNumber')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current Launch Template Version: $CURRENT_VERSION"
+
+      - name: Create New Launch Template Version
+        id: new_lt
+        run: |
+          NEW_VERSION=$(aws ec2 create-launch-template-version \
+            --launch-template-name ${{ inputs.launch_template_name }} \
+            --source-version '$Latest' \
+            --launch-template-data "{\"ImageId\":\"${{ inputs.ami_id }}\"}" \
+            --region ${{ inputs.aws_region }} \

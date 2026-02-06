@@ -27,3 +27,9 @@ variable "domain_name" {
   description = "Domain name for SSL certificate"
   type        = string
 }
+
+variable "db_password" {
+  description = "Password for the RDS database"
+  type        = string
+  sensitive   = true
+}

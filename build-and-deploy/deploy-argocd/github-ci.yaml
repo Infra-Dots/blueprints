@@ -1,0 +1,102 @@
+name: Deploy to ArgoCD
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        type: string
+      application_name:
+        description: 'ArgoCD application name'
+        required: true
+        type: string
+      argocd_url:
+        description: 'ArgoCD server URL'
+        required: true
+        type: string
+      argocd_token:
+        description: 'ArgoCD authentication token'
+        required: true
+        type: string
+      argocd_version:
+        description: 'ArgoCD CLI version (e.g., v2.9.3 or latest)'
+        required: false
+        type: string
+        default: 'latest'
+
+jobs:
+  argocd-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install ArgoCD CLI
+        env:
+          ARGOCD_VERSION: ${{ inputs.argocd_version }}
+        run: |
+          if [ "${ARGOCD_VERSION}" = "latest" ]; then
+            DOWNLOAD_URL="https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64"
+          else
+            DOWNLOAD_URL="https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
+          fi
+          curl -sSL -o /usr/local/bin/argocd ${DOWNLOAD_URL}
+          chmod +x /usr/local/bin/argocd
+          argocd version --client
+
+      - name: Authenticate to ArgoCD
+        env:
+          ARGOCD_SERVER: ${{ inputs.argocd_url }}
+          ARGOCD_AUTH_TOKEN: ${{ inputs.argocd_token }}
+        run: |
+          argocd app list --server ${ARGOCD_SERVER} --auth-token ${ARGOCD_AUTH_TOKEN} --insecure
+
+      - name: Update Application Image
+        env:
+          ARGOCD_SERVER: ${{ inputs.argocd_url }}
+          ARGOCD_AUTH_TOKEN: ${{ inputs.argocd_token }}
+          APP_NAME: ${{ inputs.application_name }}
+          IMAGE_TAG: ${{ inputs.docker_image_tag }}
+        run: |
+          argocd app set ${APP_NAME} \
+            --server ${ARGOCD_SERVER} \
+            --auth-token ${ARGOCD_AUTH_TOKEN} \
+            --insecure \
+            --parameter image.tag=${IMAGE_TAG}
+
+      - name: Sync ArgoCD Application
+        env:
+          ARGOCD_SERVER: ${{ inputs.argocd_url }}
+          ARGOCD_AUTH_TOKEN: ${{ inputs.argocd_token }}
+          APP_NAME: ${{ inputs.application_name }}
+        run: |
+          argocd app sync ${APP_NAME} \
+            --server ${ARGOCD_SERVER} \
+            --auth-token ${ARGOCD_AUTH_TOKEN} \
+            --insecure \
+            --prune \
+            --force
+
+      - name: Wait for Application to be Healthy
+        env:
+          ARGOCD_SERVER: ${{ inputs.argocd_url }}
+          ARGOCD_AUTH_TOKEN: ${{ inputs.argocd_token }}
+          APP_NAME: ${{ inputs.application_name }}
+        run: |
+          argocd app wait ${APP_NAME} \
+            --server ${ARGOCD_SERVER} \
+            --auth-token ${ARGOCD_AUTH_TOKEN} \
+            --insecure \
+            --health \
+            --timeout 300
+
+      - name: Get Application Status
+        env:
+          ARGOCD_SERVER: ${{ inputs.argocd_url }}
+          ARGOCD_AUTH_TOKEN: ${{ inputs.argocd_token }}
+          APP_NAME: ${{ inputs.application_name }}
+        run: |
+          echo "=== Application Status ==="
+          argocd app get ${APP_NAME} \
+            --server ${ARGOCD_SERVER} \
+            --auth-token ${ARGOCD_AUTH_TOKEN} \
+            --insecure

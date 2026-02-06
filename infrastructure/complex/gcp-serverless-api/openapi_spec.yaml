@@ -1,0 +1,20 @@
+swagger: '2.0'
+info:
+  title: Serverless Demo API
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /hello:
+    get:
+      summary: Hello Endpoint
+      operationId: hello
+      x-google-backend:
+        address: ${function_uri}
+      responses:
+        '200':
+          description: A successful response
+          schema:
+            type: string

@@ -20,31 +20,31 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c  # v6.1.0
         with:
-          go-version: '1.21'
+          go-version: '1.23'
 
       - name: Build Go Binary
         run: |
           mkdir -p build
           go build -o build/${BINARY_NAME} ./cmd
 
-      - name: Archive Binary (optional)
+      - name: Archive Binary
         run: tar -czf build/${BINARY_NAME}.tar.gz -C build ${BINARY_NAME}
 
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708  # v5.1.1
         with:
           role-to-assume: arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_GITHUB_ROLE
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Install HashiCorp Packer
-        uses: hashicorp/setup-packer@v3
+        uses: hashicorp/setup-packer@1aa358be5cf73883762b302a3a03abd66e75b232  # v3.1.0
         with:
-          version: 1.14.1
+          version: 1.14.3
 
       - name: Validate Packer Template
         run: |
@@ -66,7 +66,7 @@ jobs:
         run: echo "Built AMI ID: ${{ steps.ami.outputs.AMI_ID }}"
 
       - name: Upload Packer Log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: packer-log
           path: packer.log

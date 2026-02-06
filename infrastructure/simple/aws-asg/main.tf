@@ -57,6 +57,26 @@ resource "aws_security_group" "alb_sg" {
   }
 
   egress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_security_group.asg_sg.id]
+  }
+}
+
+resource "aws_security_group" "asg_sg" {
+  name        = "asg-sg"
+  description = "Allow Access from ALB and Egress to DB/Internet"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
+  egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -122,10 +142,58 @@ module "asg" {
 
   image_id        = var.image_id
   instance_type   = "t3.micro"
-  security_groups = [aws_security_group.alb_sg.id]
+  security_groups = [aws_security_group.asg_sg.id]
 }
 
 resource "aws_autoscaling_attachment" "infradots" {
   autoscaling_group_name = module.asg.autoscaling_group_id
   lb_target_group_arn    = aws_lb_target_group.infradots.arn
+}
+
+resource "aws_security_group" "db_sg" {
+  name        = "db-sg"
+  description = "Allow Access from ASG"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.asg_sg.id]
+  }
+}
+
+module "db" {
+  source  = "terraform-aws-modules/rds/aws"
+  version = "~> 7.0"
+
+  identifier = "infradots-db"
+
+  engine               = "postgres"
+  engine_version       = "17"
+  family               = "postgres17"
+  major_engine_version = "17"
+  instance_class       = "db.t4g.micro"
+
+  allocated_storage     = 20
+  max_allocated_storage = 100
+
+  db_name  = "appdb"
+  username = "user"
+  port     = 5432
+
+  multi_az               = false
+  subnet_ids             = module.vpc.private_subnets
+  vpc_security_group_ids = [aws_security_group.db_sg.id]
+
+  maintenance_window      = "Mon:00:00-Mon:03:00"
+  backup_window           = "03:00-06:00"
+  backup_retention_period = 7
+
+  # Disable generation of random password so we can define it or output it clearly for the blueprint demo
+  # In production, use integration with Secrets Manager (which this module supports)
+  manage_master_user_password = false
+  password = var.db_password
+  
+  skip_final_snapshot = true # For blueprint/dev purposes
 }
